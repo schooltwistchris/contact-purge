@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Clean Contacts",
-    "slug": "mobile",
+    "name": "Contact Purge",
+    "slug": "contactpurge",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "contactpurge",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -17,10 +17,15 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSContactsUsageDescription": "Clean Contacts needs access to your contacts to show you ones you haven't been in touch with."
-      }
+      },
+      "bundleIdentifier": "com.contactpurge.app"
     },
     "android": {
-      "permissions": ["android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS"]
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS"
+      ],
+      "package": "com.contactpurge.app"
     },
     "web": {
       "favicon": "./assets/images/icon.png"

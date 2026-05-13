@@ -9,7 +9,8 @@
       "node": "24.13.0",
       "env": {
         "EAS_SKIP_AUTO_FINGERPRINT": "1",
-        "EAS_NO_VCS": "1"
+        "EAS_NO_VCS": "1",
+        "npm_config_frozen_lockfile": "false"
       },
       "android": {
         "buildType": "apk"

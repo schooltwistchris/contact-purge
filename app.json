@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "cde6bf2a-ea85-4adf-8e5e-2d3393781116"
+      }
+    },
+    "android": {
+      "package": "com.cirving.workspace"
+    }
+  }
+}

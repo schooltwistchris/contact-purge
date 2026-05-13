@@ -10,7 +10,9 @@
       "env": {
         "EAS_SKIP_AUTO_FINGERPRINT": "1",
         "EAS_NO_VCS": "1",
-        "npm_config_frozen_lockfile": "false"
+        "npm_config_frozen_lockfile": "false",
+        "NPM_CONFIG_PRODUCTION": "false",
+        "NODE_ENV": "development"
       },
       "android": {
         "buildType": "apk"

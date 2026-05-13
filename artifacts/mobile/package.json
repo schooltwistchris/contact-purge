@@ -8,7 +8,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "eas-build-pre-install": "rm -f ../../pnpm-lock.yaml"
+    "eas-build-pre-install": "rm -f pnpm-lock.yaml ../../pnpm-lock.yaml && (cd $(test -f ../../pnpm-workspace.yaml && echo ../.. || echo .) && pnpm install --lockfile-only --no-frozen-lockfile)"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

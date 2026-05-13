@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "83f0jeKXeaELgx-b1pvgA"
+uri = "file://artifacts/mobile/assets/images/icon.png"
+type = "image"
+title = "contact cleaner app icon"

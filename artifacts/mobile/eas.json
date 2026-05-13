@@ -7,7 +7,6 @@
     "preview": {
       "distribution": "internal",
       "node": "24.13.0",
-      "pnpm": "10.26.1",
       "env": {
         "EAS_SKIP_AUTO_FINGERPRINT": "1",
         "EAS_NO_VCS": "1"
@@ -18,7 +17,6 @@
     },
     "production": {
       "node": "24.13.0",
-      "pnpm": "10.26.1",
       "env": {
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       },

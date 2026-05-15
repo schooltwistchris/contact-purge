@@ -159,7 +159,7 @@ export default function MainScreen() {
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 0);
 
-  if (permissionStatus === "unknown" || permissionStatus === "requesting") {
+  if (permissionStatus === "requesting") {
     return (
       <View
         style={[styles.centerContainer, { backgroundColor: colors.background }]}
@@ -169,7 +169,7 @@ export default function MainScreen() {
     );
   }
 
-  if (permissionStatus === "denied" || permissionStatus === "unknown") {
+  if (permissionStatus !== "granted") {
     return <PermissionScreen />;
   }
 

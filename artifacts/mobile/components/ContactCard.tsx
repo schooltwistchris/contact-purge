@@ -42,9 +42,10 @@ interface Props {
   contact: ContactItem;
   selected: boolean;
   onPress: (id: string) => void;
+  onLongPress?: (id: string) => void;
 }
 
-export function ContactCard({ contact, selected, onPress }: Props) {
+export function ContactCard({ contact, selected, onPress, onLongPress }: Props) {
   const colors = useColors();
   const scale = useRef(new Animated.Value(1)).current;
   const avatarColor = getAvatarColor(contact.name);
@@ -68,6 +69,14 @@ export function ContactCard({ contact, selected, onPress }: Props) {
     onPress(contact.id);
   }, [contact.id, onPress, scale]);
 
+  const handleLongPress = useCallback(() => {
+    if (!onLongPress) return;
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    onLongPress(contact.id);
+  }, [contact.id, onLongPress]);
+
   const primaryPhone = contact.phoneNumbers?.[0]?.number;
   const primaryEmail = !primaryPhone ? contact.emails?.[0]?.email : undefined;
   const subtitle = primaryPhone ?? primaryEmail ?? "No contact info";
@@ -76,6 +85,8 @@ export function ContactCard({ contact, selected, onPress }: Props) {
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
         onPress={handlePress}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
         style={[
           styles.card,
           {

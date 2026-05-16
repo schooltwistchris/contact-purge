@@ -123,6 +123,7 @@ export default function MainScreen() {
     selectAll,
     clearSelection,
     deleteSelected,
+    deleteOne,
     reload,
   } = useContacts();
 
@@ -150,6 +151,33 @@ export default function MainScreen() {
       ]
     );
   }, [selectedIds.size, deleteSelected]);
+
+  const handleLongPressContact = useCallback(
+    (id: string) => {
+      const contact = contacts.find((c) => c.id === id);
+      if (!contact) return;
+      Alert.alert(
+        `Delete ${contact.name}?`,
+        "This cannot be undone. Contacts synced from Google or Samsung accounts may not be fully removed here.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              if (Platform.OS !== "web") {
+                Haptics.notificationAsync(
+                  Haptics.NotificationFeedbackType.Warning
+                );
+              }
+              await deleteOne(id);
+            },
+          },
+        ]
+      );
+    },
+    [contacts, deleteOne]
+  );
 
   const isSelecting = selectedIds.size > 0;
   const allSelected =
@@ -273,6 +301,7 @@ export default function MainScreen() {
             contact={item}
             selected={selectedIds.has(item.id)}
             onPress={toggleSelect}
+            onLongPress={handleLongPressContact}
           />
         )}
         ListEmptyComponent={

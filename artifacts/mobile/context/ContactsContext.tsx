@@ -39,6 +39,7 @@ interface ContactsState {
   selectAll: () => void;
   clearSelection: () => void;
   deleteSelected: () => Promise<void>;
+  deleteOne: (id: string) => Promise<void>;
   requestPermission: () => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -259,6 +260,31 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
     setSelectedIds(new Set());
   }, []);
 
+  const deleteOne = useCallback(async (id: string) => {
+    let failed = false;
+    if (Platform.OS !== "web") {
+      try {
+        await Contacts.removeContactAsync(id);
+      } catch {
+        failed = true;
+      }
+    }
+    if (failed) {
+      Alert.alert(
+        "Couldn't delete contact",
+        "This contact (likely synced from Google/Samsung) couldn't be removed. Open the Contacts app to delete it manually."
+      );
+      return;
+    }
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
   const deleteSelected = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
@@ -303,6 +329,7 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
         selectAll,
         clearSelection,
         deleteSelected,
+        deleteOne,
         requestPermission,
         reload,
       }}

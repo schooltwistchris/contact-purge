@@ -188,10 +188,16 @@ export default function MainScreen() {
       >
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+            <Text
+              style={[styles.headerTitle, { color: colors.foreground }]}
+              numberOfLines={1}
+            >
               Clean Contacts
             </Text>
-            <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>
+            <Text
+              style={[styles.headerSub, { color: colors.mutedForeground }]}
+              numberOfLines={1}
+            >
               Samsung Galaxy
             </Text>
           </View>
@@ -313,6 +319,9 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     gap: 1,
+    flexShrink: 1,
+    flexGrow: 0,
+    minWidth: 0,
   },
   headerTitle: {
     fontSize: 24,

@@ -20,6 +20,7 @@
     },
     "production": {
       "node": "24.13.0",
+      "autoIncrement": true,
       "env": {
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       },

@@ -152,11 +152,6 @@ export function ContactCard({ contact, selected, onPress, onLongPress }: Props) 
               {formatLastContacted(contact.lastTimeContacted)}
             </Text>
           )}
-          {!contact.hasStats && (
-            <Text style={[styles.noData, { color: colors.mutedForeground }]}>
-              No history
-            </Text>
-          )}
         </View>
 
         <View
@@ -233,11 +228,6 @@ const styles = StyleSheet.create({
   lastContacted: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",
-  },
-  noData: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    fontStyle: "italic",
   },
   checkbox: {
     width: 22,

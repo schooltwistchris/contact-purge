@@ -5,12 +5,24 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { Alert, Platform } from "react-native";
+import { Alert, AppState, PermissionsAndroid, Platform } from "react-native";
+import CallLogs from "react-native-call-log";
 
-export type TimeFilter = "all" | "3yr" | "5yr" | "10yr";
-export type FreqFilter = "all" | "1x" | "5x" | "10x";
+export type QualityFilter =
+  | "all"
+  | "no-info"
+  | "service-codes"
+  | "duplicates";
+
+export type CallLogStatus =
+  | "unavailable" // iOS / web — not supported
+  | "unknown" // not yet asked
+  | "requesting"
+  | "denied"
+  | "granted";
 
 export interface ContactItem {
   id: string;
@@ -28,72 +40,23 @@ interface ContactsState {
   contacts: ContactItem[];
   filteredContacts: ContactItem[];
   selectedIds: Set<string>;
-  timeFilter: TimeFilter;
-  freqFilter: FreqFilter;
+  qualityFilter: QualityFilter;
   permissionStatus: "unknown" | "granted" | "denied" | "requesting";
+  callLogStatus: CallLogStatus;
   loading: boolean;
-  hasStatsData: boolean;
-  setTimeFilter: (f: TimeFilter) => void;
-  setFreqFilter: (f: FreqFilter) => void;
+  counts: Record<QualityFilter, number>;
+  setQualityFilter: (f: QualityFilter) => void;
   toggleSelect: (id: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
   deleteSelected: () => Promise<void>;
   deleteOne: (id: string) => Promise<void>;
   requestPermission: () => Promise<void>;
+  enableCallLogSmartSort: () => Promise<void>;
   reload: () => Promise<void>;
 }
 
 const ContactsCtx = createContext<ContactsState | null>(null);
-
-const MS_DAY = 24 * 60 * 60 * 1000;
-const MS_YEAR = 365.25 * MS_DAY;
-
-function getMockContacts(): ContactItem[] {
-  const now = Date.now();
-  const raw: Array<[string, string | undefined, number | null, number | null]> = [
-    ["Aaron Mitchell", "+1 555 0123", now - 12 * MS_YEAR, 1],
-    ["Alex Park", "+1 555 0144", now - 30 * MS_DAY, 47],
-    ["Bianca Romero", "+1 555 0188", now - 6 * MS_YEAR, 2],
-    ["Brent Sawyer", undefined, null, null],
-    ["Casey Lin", "+1 555 0199", now - 3 * MS_DAY, 312],
-    ["Chen Wei", "+1 555 0211", now - 8 * MS_YEAR, 1],
-    ["Daniela Ortiz", "+1 555 0220", now - 2 * MS_YEAR, 23],
-    ["Derek Holmes", "+1 555 0234", now - 11 * MS_YEAR, 3],
-    ["Elena Vasquez", "+1 555 0245", now - 4 * MS_YEAR, 5],
-    ["Evan Foster", "+1 555 0256", now - 1 * MS_YEAR, 89],
-    ["Fatima Khan", "+1 555 0267", now - 5.5 * MS_YEAR, 4],
-    ["George Pemberton", undefined, null, null],
-    ["Hana Tanaka", "+1 555 0289", now - 90 * MS_DAY, 156],
-    ["Ian McAllister", "+1 555 0301", now - 7 * MS_YEAR, 1],
-    ["Jade Robinson", "+1 555 0312", now - 4.2 * MS_YEAR, 8],
-    ["Kai Bennett", "+1 555 0323", now - 14 * MS_YEAR, 2],
-    ["Leo Marchetti", "+1 555 0334", now - 200 * MS_DAY, 67],
-    ["Maya Singh", "+1 555 0345", now - 3.5 * MS_YEAR, 9],
-    ["Nina Kowalski", "+1 555 0356", now - 6.8 * MS_YEAR, 1],
-    ["Oscar Delgado", "+1 555 0367", now - 11 * MS_DAY, 234],
-    ["Priya Reddy", "+1 555 0378", now - 5 * MS_YEAR, 6],
-    ["Quinn Avery", undefined, null, null],
-    ["Rafael Costa", "+1 555 0390", now - 9 * MS_YEAR, 2],
-    ["Sasha Petrov", "+1 555 0401", now - 60 * MS_DAY, 45],
-    ["Tomás Núñez", "+1 555 0412", now - 13 * MS_YEAR, 1],
-    ["Uma Patel", "+1 555 0423", now - 3.1 * MS_YEAR, 4],
-    ["Victor Hwang", "+1 555 0434", now - 7.5 * MS_YEAR, 3],
-    ["Wendy Brooks", "+1 555 0445", now - 5 * MS_DAY, 178],
-    ["Xavier Dunn", "+1 555 0456", now - 10 * MS_YEAR, 1],
-    ["Yuki Sato", "+1 555 0467", now - 4 * MS_YEAR, 7],
-    ["Zara Khalil", "+1 555 0478", now - 6 * MS_YEAR, 2],
-  ];
-  return raw.map(([name, phone, lastTime, times], i) => ({
-    id: `mock-${i}`,
-    name,
-    initials: getInitials(name),
-    phoneNumbers: phone ? [{ number: phone }] : undefined,
-    lastTimeContacted: lastTime,
-    timesContacted: times,
-    hasStats: lastTime !== null || times !== null,
-  }));
-}
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -102,61 +65,188 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function getYearCutoff(filter: TimeFilter): number | null {
-  const now = Date.now();
-  const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
-  if (filter === "3yr") return now - 3 * MS_PER_YEAR;
-  if (filter === "5yr") return now - 5 * MS_PER_YEAR;
-  if (filter === "10yr") return now - 10 * MS_PER_YEAR;
-  return null;
+// Service shortcodes: carrier/utility entries auto-added to the address book.
+// Examples: "#BAL", "*611", "611", "TMOBILE", "Verizon Wireless".
+// Heuristic: name starts with # / * / digit, OR primary phone is a short code
+// (≤5 digits after stripping non-digits).
+function isServiceShortcode(c: ContactItem): boolean {
+  const trimmedName = c.name.trim();
+  if (/^[#*]/.test(trimmedName)) return true;
+  if (/^\d/.test(trimmedName)) return true;
+  const primaryPhone = c.phoneNumbers?.[0]?.number;
+  if (primaryPhone) {
+    const digits = primaryPhone.replace(/\D/g, "");
+    if (digits.length > 0 && digits.length <= 5) return true;
+  }
+  return false;
 }
 
-function getFreqMax(filter: FreqFilter): number | null {
-  if (filter === "1x") return 1;
-  if (filter === "5x") return 5;
-  if (filter === "10x") return 10;
-  return null;
+function hasNoContactInfo(c: ContactItem): boolean {
+  const hasPhone = !!c.phoneNumbers?.some(
+    (p) => p.number && p.number.trim() !== ""
+  );
+  const hasEmail = !!c.emails?.some((e) => e.email && e.email.trim() !== "");
+  return !hasPhone && !hasEmail;
+}
+
+function normalizeNameForDupe(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function findDuplicateIds(contacts: ContactItem[]): Set<string> {
+  const groups = new Map<string, string[]>();
+  for (const c of contacts) {
+    const key = normalizeNameForDupe(c.name);
+    if (!key) continue;
+    const arr = groups.get(key) ?? [];
+    arr.push(c.id);
+    groups.set(key, arr);
+  }
+  const dupes = new Set<string>();
+  for (const ids of groups.values()) {
+    if (ids.length > 1) {
+      ids.forEach((id) => dupes.add(id));
+    }
+  }
+  return dupes;
+}
+
+// === Call log aggregation (Android only) ===
+// Normalize to last-10-digits so "+1 (555) 012-3456" matches "5550123456"
+// and matches against whatever format the call log returns.
+function phoneKey(raw: string | undefined | null): string {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+type UsageStats = { lastTime: number; count: number };
+
+async function loadUsageMap(): Promise<Map<string, UsageStats>> {
+  const logs = await CallLogs.loadAll();
+  const m = new Map<string, UsageStats>();
+  for (const log of logs) {
+    const key = phoneKey(log.phoneNumber);
+    if (!key) continue;
+    const ts =
+      typeof log.timestamp === "string"
+        ? parseInt(log.timestamp, 10)
+        : Number(log.timestamp);
+    if (!Number.isFinite(ts)) continue;
+    const existing = m.get(key);
+    if (existing) {
+      existing.count++;
+      if (ts > existing.lastTime) existing.lastTime = ts;
+    } else {
+      m.set(key, { lastTime: ts, count: 1 });
+    }
+  }
+  return m;
+}
+
+function attachUsageStats(
+  contacts: ContactItem[],
+  usage: Map<string, UsageStats>
+): ContactItem[] {
+  if (usage.size === 0) return contacts;
+  return contacts.map((c) => {
+    let bestLast = 0;
+    let totalCount = 0;
+    let found = false;
+    for (const p of c.phoneNumbers ?? []) {
+      const key = phoneKey(p.number);
+      if (!key) continue;
+      const stats = usage.get(key);
+      if (stats) {
+        found = true;
+        totalCount += stats.count;
+        if (stats.lastTime > bestLast) bestLast = stats.lastTime;
+      }
+    }
+    if (!found) return c;
+    return {
+      ...c,
+      lastTimeContacted: bestLast,
+      timesContacted: totalCount,
+      hasStats: true,
+    };
+  });
+}
+
+function getMockContacts(): ContactItem[] {
+  const raw: Array<[string, string | undefined, string | undefined]> = [
+    ["Alex Park", "+1 555 0144", "alex@example.com"],
+    ["Bianca Romero", "+1 555 0188", undefined],
+    ["Brent Sawyer", undefined, undefined],
+    ["Casey Lin", "+1 555 0199", undefined],
+    ["Casey Lin", "+1 555 9999", undefined],
+    ["#BAL", "#225", undefined],
+    ["#DATA", "#3282", undefined],
+    ["#MIN", "#646", undefined],
+    ["611", "611", undefined],
+    ["Daniela Ortiz", "+1 555 0220", undefined],
+    ["Elena Vasquez", undefined, undefined],
+    ["Evan Foster", "+1 555 0256", undefined],
+    ["George Pemberton", undefined, undefined],
+    ["Hana Tanaka", "+1 555 0289", undefined],
+    ["Hana Tanaka", undefined, "hana@example.com"],
+    ["Ian McAllister", "+1 555 0301", undefined],
+    ["Quinn Avery", undefined, undefined],
+  ];
+  return raw.map(([name, phone, email], i) => ({
+    id: `mock-${i}`,
+    name,
+    initials: getInitials(name),
+    phoneNumbers: phone ? [{ number: phone }] : undefined,
+    emails: email ? [{ email }] : undefined,
+    lastTimeContacted: null,
+    timesContacted: null,
+    hasStats: false,
+  }));
 }
 
 export function ContactsProvider({ children }: { children: React.ReactNode }) {
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
-  const [freqFilter, setFreqFilter] = useState<FreqFilter>("all");
+  const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [permissionStatus, setPermissionStatus] = useState<
     "unknown" | "granted" | "denied" | "requesting"
   >("unknown");
+  const [callLogStatus, setCallLogStatus] = useState<CallLogStatus>(
+    Platform.OS === "android" ? "unknown" : "unavailable"
+  );
   const [loading, setLoading] = useState(false);
 
-  const hasStatsData = useMemo(
-    () => contacts.some((c) => c.hasStats),
-    [contacts]
-  );
+  const duplicateIds = useMemo(() => findDuplicateIds(contacts), [contacts]);
+
+  const counts = useMemo<Record<QualityFilter, number>>(() => {
+    let noInfo = 0;
+    let service = 0;
+    for (const c of contacts) {
+      if (hasNoContactInfo(c)) noInfo++;
+      if (isServiceShortcode(c)) service++;
+    }
+    return {
+      all: contacts.length,
+      "no-info": noInfo,
+      "service-codes": service,
+      duplicates: duplicateIds.size,
+    };
+  }, [contacts, duplicateIds]);
 
   const filteredContacts = useMemo(() => {
-    const cutoff = getYearCutoff(timeFilter);
-    const maxFreq = getFreqMax(freqFilter);
-
-    return contacts.filter((c) => {
-      let passesTime = true;
-      if (cutoff !== null) {
-        if (c.lastTimeContacted != null) {
-          passesTime = c.lastTimeContacted < cutoff;
-        }
-        // contacts with no data = treated as never contacted → always pass time filter
-      }
-
-      let passesFreq = true;
-      if (maxFreq !== null) {
-        if (c.timesContacted != null) {
-          passesFreq = c.timesContacted <= maxFreq;
-        }
-        // contacts with no data = treated as 0 → always pass freq filter
-      }
-
-      return passesTime && passesFreq;
-    });
-  }, [contacts, timeFilter, freqFilter]);
+    switch (qualityFilter) {
+      case "no-info":
+        return contacts.filter(hasNoContactInfo);
+      case "service-codes":
+        return contacts.filter(isServiceShortcode);
+      case "duplicates":
+        return contacts.filter((c) => duplicateIds.has(c.id));
+      case "all":
+      default:
+        return contacts;
+    }
+  }, [contacts, qualityFilter, duplicateIds]);
 
   const loadContacts = useCallback(async () => {
     if (Platform.OS === "web") {
@@ -176,32 +266,36 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
         sort: Contacts.SortTypes.LastName,
       });
 
-      const mapped: ContactItem[] = data
+      let mapped: ContactItem[] = data
         .filter((c) => c.id && c.name)
-        .map((c) => {
-          const raw = c as unknown as Record<string, unknown>;
-          const lastTime =
-            typeof raw["lastTimeContacted"] === "number"
-              ? (raw["lastTimeContacted"] as number)
-              : null;
-          const times =
-            typeof raw["timesContacted"] === "number"
-              ? (raw["timesContacted"] as number)
-              : null;
+        .map((c) => ({
+          id: c.id!,
+          name: c.name!,
+          initials: getInitials(c.name!),
+          phoneNumbers: c.phoneNumbers as ContactItem["phoneNumbers"],
+          emails: c.emails as ContactItem["emails"],
+          imageUri:
+            c.imageAvailable && c.image?.uri ? c.image.uri : undefined,
+          lastTimeContacted: null,
+          timesContacted: null,
+          hasStats: false,
+        }));
 
-          return {
-            id: c.id!,
-            name: c.name!,
-            initials: getInitials(c.name!),
-            phoneNumbers: c.phoneNumbers as ContactItem["phoneNumbers"],
-            emails: c.emails as ContactItem["emails"],
-            imageUri:
-              c.imageAvailable && c.image?.uri ? c.image.uri : undefined,
-            lastTimeContacted: lastTime,
-            timesContacted: times,
-            hasStats: lastTime !== null || times !== null,
-          };
-        });
+      // Enrich with usage stats if user has granted READ_CALL_LOG. Checking
+      // the OS permission directly (not React state) keeps this self-contained.
+      if (Platform.OS === "android") {
+        try {
+          const callLogGranted = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.READ_CALL_LOG
+          );
+          if (callLogGranted) {
+            const usage = await loadUsageMap();
+            mapped = attachUsageStats(mapped, usage);
+          }
+        } catch (e) {
+          console.warn("Failed to load call log usage stats:", e);
+        }
+      }
 
       setContacts(mapped);
     } finally {
@@ -224,23 +318,84 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [loadContacts]);
 
+  const enableCallLogSmartSort = useCallback(async () => {
+    if (Platform.OS !== "android") return;
+    setCallLogStatus("requesting");
+    try {
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+        {
+          title: "Use your call history?",
+          message:
+            "Contact Purge can sort contacts by how recently and how often you've called them. Call history is read locally on your device and never leaves it.",
+          buttonPositive: "Allow",
+          buttonNegative: "Not now",
+        }
+      );
+      if (result === PermissionsAndroid.RESULTS.GRANTED) {
+        setCallLogStatus("granted");
+        // Re-load contacts now that we can enrich with usage stats.
+        await loadContacts();
+      } else {
+        setCallLogStatus("denied");
+      }
+    } catch (e) {
+      console.warn("Call log permission request failed:", e);
+      setCallLogStatus("denied");
+    }
+  }, [loadContacts]);
+
+  const permissionStatusRef = useRef(permissionStatus);
+  useEffect(() => {
+    permissionStatusRef.current = permissionStatus;
+  }, [permissionStatus]);
+
   useEffect(() => {
     if (Platform.OS === "web") {
       setPermissionStatus("granted");
       setContacts(getMockContacts());
       return;
     }
-    (async () => {
+    const check = async () => {
       const { status } = await Contacts.getPermissionsAsync();
       if (status === "granted") {
+        const wasNotGranted = permissionStatusRef.current !== "granted";
         setPermissionStatus("granted");
-        await loadContacts();
+        if (wasNotGranted) {
+          await loadContacts();
+        }
       } else if (status === "denied") {
         setPermissionStatus("denied");
       } else {
         setPermissionStatus("unknown");
       }
-    })();
+      // Sync the call-log UI status with the live OS permission so the
+      // "Enable smart sort" button hides automatically if the user grants
+      // or revokes it from Settings.
+      if (Platform.OS === "android") {
+        try {
+          const callLogGranted = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.READ_CALL_LOG
+          );
+          setCallLogStatus((prev) => {
+            if (callLogGranted) return "granted";
+            // Don't downgrade "denied" → "unknown" — once denied, keep it
+            // so the UI shows the right messaging.
+            return prev === "denied" ? "denied" : "unknown";
+          });
+        } catch (e) {
+          console.warn("Failed to check call log permission:", e);
+        }
+      }
+    };
+    check();
+    // Re-check when the user returns to the app (e.g. after toggling
+    // permission in Settings). Without this, the "denied" wall sticks
+    // even after access has been granted in system Settings.
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
+    return () => sub.remove();
   }, [loadContacts]);
 
   const toggleSelect = useCallback((id: string) => {
@@ -262,17 +417,37 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
 
   const deleteOne = useCallback(async (id: string) => {
     let failed = false;
+    let errorReason: "permission" | "rejected" | null = null;
     if (Platform.OS !== "web") {
       try {
         await Contacts.removeContactAsync(id);
-      } catch {
+        // Android's ContentResolver.delete returns no error for read-only or
+        // sync-protected contacts (WhatsApp, LinkedIn, Google Workspace, etc).
+        // Verify the row is actually gone before claiming success.
+        if (Platform.OS === "android") {
+          let stillThere;
+          try {
+            stillThere = await Contacts.getContactByIdAsync(id);
+          } catch {
+            stillThere = undefined;
+          }
+          if (stillThere) {
+            failed = true;
+            errorReason = "rejected";
+          }
+        }
+      } catch (e) {
+        console.warn("removeContactAsync failed", e);
         failed = true;
+        errorReason = "permission";
       }
     }
     if (failed) {
       Alert.alert(
         "Couldn't delete contact",
-        "This contact (likely synced from Google/Samsung) couldn't be removed. Open the Contacts app to delete it manually."
+        errorReason === "rejected"
+          ? "This contact is read-only or synced from an account (Google, Samsung, WhatsApp) that protects it. Open the Contacts app to remove it manually."
+          : "Contact Purge couldn't delete this contact. Check Settings → Apps → Contact Purge to make sure Contacts permission is granted."
       );
       return;
     }
@@ -288,22 +463,43 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
   const deleteSelected = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
+    const deletedIds = new Set<string>();
     let failed = 0;
-    if (Platform.OS !== "web") {
+    if (Platform.OS === "web") {
+      ids.forEach((id) => deletedIds.add(id));
+    } else {
       for (const id of ids) {
         try {
           await Contacts.removeContactAsync(id);
-        } catch {
+          if (Platform.OS === "android") {
+            let stillThere;
+            try {
+              stillThere = await Contacts.getContactByIdAsync(id);
+            } catch {
+              stillThere = undefined;
+            }
+            if (stillThere) {
+              failed++;
+              continue;
+            }
+          }
+          deletedIds.add(id);
+        } catch (e) {
+          console.warn("removeContactAsync failed for", id, e);
           failed++;
         }
       }
     }
-    setContacts((prev) => prev.filter((c) => !selectedIds.has(c.id)));
-    setSelectedIds(new Set());
+    setContacts((prev) => prev.filter((c) => !deletedIds.has(c.id)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      deletedIds.forEach((id) => next.delete(id));
+      return next;
+    });
     if (failed > 0) {
       Alert.alert(
         "Some contacts couldn't be deleted",
-        `${failed} contact(s) (likely synced from Google/Samsung) couldn't be removed. Open Contacts app to delete them manually.`
+        `${failed} contact${failed === 1 ? " is" : "s are"} read-only or synced from a protected account (Google, Samsung, WhatsApp). Open the Contacts app to remove ${failed === 1 ? "it" : "them"} manually.`
       );
     }
   }, [selectedIds]);
@@ -318,19 +514,19 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
         contacts,
         filteredContacts,
         selectedIds,
-        timeFilter,
-        freqFilter,
+        qualityFilter,
         permissionStatus,
+        callLogStatus,
         loading,
-        hasStatsData,
-        setTimeFilter,
-        setFreqFilter,
+        counts,
+        setQualityFilter,
         toggleSelect,
         selectAll,
         clearSelection,
         deleteSelected,
         deleteOne,
         requestPermission,
+        enableCallLogSmartSort,
         reload,
       }}
     >

@@ -5,6 +5,7 @@ import {
   Alert,
   ActivityIndicator,
   FlatList,
+  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -64,12 +65,7 @@ function PermissionScreen() {
       )}
       {!isWeb && permissionStatus === "denied" && (
         <Pressable
-          onPress={() =>
-            Alert.alert(
-              "Open Settings",
-              "Go to Settings > Contact Cleaner > Contacts and enable access."
-            )
-          }
+          onPress={() => Linking.openSettings()}
           style={[styles.permButton, { backgroundColor: colors.secondary }]}
         >
           <Text style={[styles.permButtonText, { color: colors.foreground }]}>
@@ -81,26 +77,92 @@ function PermissionScreen() {
   );
 }
 
-function EmptyState({
-  timeFilter,
-  freqFilter,
-}: {
-  timeFilter: string;
-  freqFilter: string;
-}) {
+const EMPTY_COPY: Record<string, { title: string; subtitle: string }> = {
+  all: {
+    title: "No contacts",
+    subtitle: "Your contact list is already clean.",
+  },
+  "no-info": {
+    title: "Nothing here",
+    subtitle:
+      "Every contact has at least a phone number or email — no orphans to clean up.",
+  },
+  "service-codes": {
+    title: "No service codes",
+    subtitle:
+      "No carrier shortcodes or short numbers found in your contacts.",
+  },
+  duplicates: {
+    title: "No duplicates",
+    subtitle: "No contacts share the same name.",
+  },
+};
+
+function EmptyState({ qualityFilter }: { qualityFilter: string }) {
   const colors = useColors();
-  const isFiltered = timeFilter !== "all" || freqFilter !== "all";
+  const copy = EMPTY_COPY[qualityFilter] ?? EMPTY_COPY.all;
   return (
     <View style={styles.emptyContainer}>
       <Ionicons name="checkmark-circle" size={56} color={colors.primary} />
       <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-        {isFiltered ? "No matches" : "No contacts"}
+        {copy.title}
       </Text>
       <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-        {isFiltered
-          ? "Try adjusting your filters to find more contacts."
-          : "Your contact list is already clean."}
+        {copy.subtitle}
       </Text>
+    </View>
+  );
+}
+
+function SmartSortBanner() {
+  const colors = useColors();
+  const { callLogStatus, enableCallLogSmartSort } = useContacts();
+
+  // Hide on iOS/web (unavailable), once granted, or while the system prompt
+  // is open. "denied" still shows the button so the user can re-try.
+  if (callLogStatus === "unavailable" || callLogStatus === "granted") {
+    return null;
+  }
+  const isDenied = callLogStatus === "denied";
+  const isRequesting = callLogStatus === "requesting";
+  return (
+    <View
+      style={[
+        styles.banner,
+        { backgroundColor: colors.secondary, borderColor: colors.border },
+      ]}
+    >
+      <Ionicons name="sparkles" size={18} color={colors.primary} />
+      <View style={styles.bannerText}>
+        <Text style={[styles.bannerTitle, { color: colors.foreground }]}>
+          {isDenied ? "Smart sort is off" : "Sort by call history?"}
+        </Text>
+        <Text
+          style={[styles.bannerSubtitle, { color: colors.mutedForeground }]}
+          numberOfLines={2}
+        >
+          {isDenied
+            ? "Grant call history access in Settings to surface contacts you haven't called recently."
+            : "Read locally on your device. Never leaves your phone."}
+        </Text>
+      </View>
+      <Pressable
+        onPress={
+          isDenied ? () => Linking.openSettings() : enableCallLogSmartSort
+        }
+        disabled={isRequesting}
+        style={[styles.bannerBtn, { backgroundColor: colors.primary }]}
+      >
+        {isRequesting ? (
+          <ActivityIndicator size="small" color={colors.primaryForeground} />
+        ) : (
+          <Text
+            style={[styles.bannerBtnText, { color: colors.primaryForeground }]}
+          >
+            {isDenied ? "Settings" : "Enable"}
+          </Text>
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -112,13 +174,11 @@ export default function MainScreen() {
     filteredContacts,
     contacts,
     selectedIds,
-    timeFilter,
-    freqFilter,
+    qualityFilter,
     permissionStatus,
     loading,
-    hasStatsData,
-    setTimeFilter,
-    setFreqFilter,
+    counts,
+    setQualityFilter,
     toggleSelect,
     selectAll,
     clearSelection,
@@ -220,13 +280,13 @@ export default function MainScreen() {
               style={[styles.headerTitle, { color: colors.foreground }]}
               numberOfLines={1}
             >
-              Clean Contacts
+              Contact Purge
             </Text>
             <Text
               style={[styles.headerSub, { color: colors.mutedForeground }]}
               numberOfLines={1}
             >
-              Samsung Galaxy
+              {contacts.length} {contacts.length === 1 ? "contact" : "contacts"}
             </Text>
           </View>
           <View style={styles.headerActions}>
@@ -283,14 +343,14 @@ export default function MainScreen() {
 
       {/* Filter Bar */}
       <FilterBar
-        timeFilter={timeFilter}
-        freqFilter={freqFilter}
-        onTimeChange={setTimeFilter}
-        onFreqChange={setFreqFilter}
-        hasStatsData={hasStatsData}
+        qualityFilter={qualityFilter}
+        onChange={setQualityFilter}
+        counts={counts}
         totalShowing={filteredContacts.length}
         totalContacts={contacts.length}
       />
+
+      <SmartSortBanner />
 
       {/* Contact List */}
       <FlatList
@@ -310,7 +370,7 @@ export default function MainScreen() {
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : (
-            <EmptyState timeFilter={timeFilter} freqFilter={freqFilter} />
+            <EmptyState qualityFilter={qualityFilter} />
           )
         }
         refreshControl={
@@ -435,5 +495,42 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     textAlign: "center",
     lineHeight: 22,
+  },
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  bannerText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  bannerTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  bannerSubtitle: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 14,
+  },
+  bannerBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    minWidth: 64,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bannerBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
 });

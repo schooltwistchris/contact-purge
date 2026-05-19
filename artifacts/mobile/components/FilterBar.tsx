@@ -8,29 +8,23 @@ import {
 } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
-import type { FreqFilter, TimeFilter } from "@/context/ContactsContext";
+import type { QualityFilter } from "@/context/ContactsContext";
 
-const TIME_OPTIONS: { label: string; value: TimeFilter }[] = [
-  { label: "Any time", value: "all" },
-  { label: "3+ years", value: "3yr" },
-  { label: "5+ years", value: "5yr" },
-  { label: "10+ years", value: "10yr" },
-];
-
-const FREQ_OPTIONS: { label: string; value: FreqFilter }[] = [
-  { label: "Any count", value: "all" },
-  { label: "Only once", value: "1x" },
-  { label: "≤5 times", value: "5x" },
-  { label: "≤10 times", value: "10x" },
+const OPTIONS: { label: string; value: QualityFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "No phone or email", value: "no-info" },
+  { label: "Service codes", value: "service-codes" },
+  { label: "Duplicates", value: "duplicates" },
 ];
 
 interface FilterChipProps {
   label: string;
+  count: number;
   active: boolean;
   onPress: () => void;
 }
 
-function FilterChip({ label, active, onPress }: FilterChipProps) {
+function FilterChip({ label, count, active, onPress }: FilterChipProps) {
   const colors = useColors();
   return (
     <TouchableOpacity
@@ -51,27 +45,24 @@ function FilterChip({ label, active, onPress }: FilterChipProps) {
         ]}
       >
         {label}
+        <Text style={styles.chipCount}> {count}</Text>
       </Text>
     </TouchableOpacity>
   );
 }
 
 interface FilterBarProps {
-  timeFilter: TimeFilter;
-  freqFilter: FreqFilter;
-  onTimeChange: (f: TimeFilter) => void;
-  onFreqChange: (f: FreqFilter) => void;
-  hasStatsData: boolean;
+  qualityFilter: QualityFilter;
+  onChange: (f: QualityFilter) => void;
+  counts: Record<QualityFilter, number>;
   totalShowing: number;
   totalContacts: number;
 }
 
 export function FilterBar({
-  timeFilter,
-  freqFilter,
-  onTimeChange,
-  onFreqChange,
-  hasStatsData,
+  qualityFilter,
+  onChange,
+  counts,
   totalShowing,
   totalContacts,
 }: FilterBarProps) {
@@ -79,45 +70,18 @@ export function FilterBar({
 
   return (
     <View style={[styles.container, { borderBottomColor: colors.border }]}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-          Last contacted
-        </Text>
-        {!hasStatsData && (
-          <Text style={[styles.noDataHint, { color: colors.mutedForeground }]}>
-            Contacts without history qualify for all filters
-          </Text>
-        )}
-      </View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        {TIME_OPTIONS.map((opt) => (
+        {OPTIONS.map((opt) => (
           <FilterChip
             key={opt.value}
             label={opt.label}
-            active={timeFilter === opt.value}
-            onPress={() => onTimeChange(opt.value)}
-          />
-        ))}
-      </ScrollView>
-
-      <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 8 }]}>
-        Times contacted
-      </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-      >
-        {FREQ_OPTIONS.map((opt) => (
-          <FilterChip
-            key={opt.value}
-            label={opt.label}
-            active={freqFilter === opt.value}
-            onPress={() => onFreqChange(opt.value)}
+            count={counts[opt.value]}
+            active={qualityFilter === opt.value}
+            onPress={() => onChange(opt.value)}
           />
         ))}
       </ScrollView>
@@ -135,28 +99,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    marginBottom: 6,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    paddingHorizontal: 16,
-    marginBottom: 6,
-  },
-  noDataHint: {
-    fontSize: 10,
-    fontFamily: "Inter_400Regular",
-    fontStyle: "italic",
-    maxWidth: 180,
-    textAlign: "right",
-  },
   row: {
     flexDirection: "row",
     gap: 8,
@@ -172,6 +114,11 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
+  },
+  chipCount: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    opacity: 0.7,
   },
   summary: {
     fontSize: 12,

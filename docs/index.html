@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Contact Purge — clean up your Android contacts</title>
+  <meta name="description" content="A small, local-only Android app to find and delete contacts you haven't been in touch with. No accounts, no tracking, no cloud." />
+  <meta property="og:title" content="Contact Purge" />
+  <meta property="og:description" content="Find and delete the contacts you haven't been in touch with. Android, sideload, free." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://schooltwistchris.github.io/contact-purge/" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%87%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #0A0F1E;
+      --bg-2: #131a2e;
+      --fg: #f3f5fa;
+      --muted: #8a93a8;
+      --accent: #5b8def;
+      --accent-2: #7aa5ff;
+      --border: rgba(255, 255, 255, 0.08);
+      --card: rgba(255, 255, 255, 0.03);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+    header {
+      padding: 80px 0 60px;
+      text-align: center;
+      background:
+        radial-gradient(60% 80% at 50% 0%, rgba(91, 141, 239, 0.18) 0%, transparent 60%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 999px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: clamp(36px, 6vw, 56px);
+      letter-spacing: -0.025em;
+      margin: 0 0 16px;
+      line-height: 1.05;
+    }
+    .tagline {
+      font-size: clamp(16px, 2.2vw, 19px);
+      color: var(--muted);
+      max-width: 580px;
+      margin: 0 auto 36px;
+    }
+    .cta-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      transition: transform 0.06s ease, background 0.15s ease;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--accent-2); text-decoration: none; }
+    .btn-secondary {
+      background: var(--card);
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.06); text-decoration: none; }
+    .install-hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 14px;
+    }
+
+    section { padding: 64px 0; border-bottom: 1px solid var(--border); }
+    section:last-of-type { border-bottom: none; }
+    h2 {
+      font-size: clamp(24px, 3.2vw, 30px);
+      margin: 0 0 8px;
+      letter-spacing: -0.015em;
+    }
+    .section-lede {
+      color: var(--muted);
+      max-width: 580px;
+      margin: 0 0 40px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+    }
+    .card-emoji {
+      font-size: 22px;
+      margin-bottom: 12px;
+      display: block;
+    }
+    .card h3 {
+      font-size: 16px;
+      margin: 0 0 6px;
+    }
+    .card p {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .steps {
+      list-style: none;
+      counter-reset: step;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 14px;
+    }
+    .steps li {
+      counter-increment: step;
+      padding: 18px 18px 18px 56px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      position: relative;
+      font-size: 15px;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 18px;
+      top: 18px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .steps code {
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .privacy-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 10px;
+    }
+    .privacy-list li {
+      padding-left: 28px;
+      position: relative;
+      color: var(--muted);
+    }
+    .privacy-list li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .privacy-list strong { color: var(--fg); font-weight: 600; }
+
+    footer {
+      padding: 40px 0 60px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--fg); }
+    .footer-links {
+      display: flex;
+      gap: 18px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #ffffff;
+        --bg-2: #f5f7fb;
+        --fg: #0A0F1E;
+        --muted: #5a6478;
+        --border: rgba(0, 0, 0, 0.08);
+        --card: rgba(0, 0, 0, 0.03);
+      }
+      header {
+        background:
+          radial-gradient(60% 80% at 50% 0%, rgba(91, 141, 239, 0.12) 0%, transparent 60%),
+          linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+      }
+      .btn-secondary:hover { background: rgba(0, 0, 0, 0.05); }
+      .steps code { background: rgba(0, 0, 0, 0.06); }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="wrap">
+      <span class="badge">Android · Free · Open Source</span>
+      <h1>Clean out your contacts.</h1>
+      <p class="tagline">
+        Find the carrier shortcodes, duplicate entries, and people you
+        haven't talked to in years — and delete them in one tap.
+        Everything runs on your phone. Nothing leaves it.
+      </p>
+      <div class="cta-row">
+        <a href="https://github.com/schooltwistchris/contact-purge/releases/latest"
+           class="btn btn-primary">
+          ⬇ Download for Android
+        </a>
+        <a href="https://github.com/schooltwistchris/contact-purge"
+           class="btn btn-secondary">
+          View on GitHub
+        </a>
+      </div>
+      <p class="install-hint">
+        Sideload only — not on Play Store. Android 10+.
+      </p>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <h2>What it finds</h2>
+      <p class="section-lede">
+        Modern Android stopped tracking "last contacted" data for apps.
+        Contact Purge works around that by filtering on things you can
+        actually see — plus an optional smart sort that reads your call
+        log locally.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <span class="card-emoji">🗒️</span>
+          <h3>No phone or email</h3>
+          <p>Contacts you can't actually reach — stray names with no
+          way to contact them.</p>
+        </div>
+        <div class="card">
+          <span class="card-emoji">📡</span>
+          <h3>Service shortcodes</h3>
+          <p>Carrier-added entries like <code>#BAL</code>,
+          <code>*611</code>, balance checkers, data trackers.</p>
+        </div>
+        <div class="card">
+          <span class="card-emoji">👯</span>
+          <h3>Duplicates</h3>
+          <p>Same person, multiple cards. Surface them so you can pick
+          which one to keep.</p>
+        </div>
+        <div class="card">
+          <span class="card-emoji">✨</span>
+          <h3>Smart sort (optional)</h3>
+          <p>Opt in to call-history access and the app surfaces
+          contacts you haven't actually spoken to in years. The data
+          never leaves your phone.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Install in 30 seconds</h2>
+      <p class="section-lede">No app store needed.</p>
+      <ol class="steps">
+        <li>
+          On your Android phone, tap the
+          <a href="https://github.com/schooltwistchris/contact-purge/releases/latest">
+            latest release
+          </a>
+          and download the <code>.apk</code> file.
+        </li>
+        <li>
+          Open the download. Android will warn about
+          "unknown sources" — tap <strong>Settings</strong> and toggle
+          <strong>Allow from this source</strong>. This is normal for
+          any app outside the Play Store.
+        </li>
+        <li>
+          Tap <strong>Install</strong>. The app appears as
+          <strong>Contact Purge</strong> in your drawer.
+        </li>
+        <li>
+          On first launch, grant <strong>Contacts</strong> permission.
+          Smart sort is optional and prompted separately.
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>About your data</h2>
+      <p class="section-lede">
+        The whole reason this app exists is that contact cleanup tools
+        shouldn't need a cloud account. So it doesn't have one.
+      </p>
+      <ul class="privacy-list">
+        <li><strong>Local-only.</strong> Your contacts and call log
+        are read on your phone and stay on your phone.</li>
+        <li><strong>No backend.</strong> No servers, no API calls, no
+        accounts to create.</li>
+        <li><strong>No analytics.</strong> No tracking SDKs, no crash
+        reporting, no telemetry of any kind.</li>
+        <li><strong>No ads, ever.</strong> The app is free because
+        it's a hobby project, not a funnel.</li>
+        <li><strong>Open source.</strong> The
+        <a href="https://github.com/schooltwistchris/contact-purge">
+          code is public
+        </a>
+        — verify any of the above yourself.</li>
+      </ul>
+      <p style="margin-top: 22px;">
+        Full
+        <a href="https://gist.github.com/schooltwistchris/2e79e2cbfe9dbc84f162ffc6dbf1565e">
+          privacy policy
+        </a>.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Found a bug? Have an idea?</h2>
+      <p class="section-lede">
+        It's a hobby project built by one person. Feedback is what
+        makes the next release better.
+      </p>
+      <div class="cta-row" style="justify-content: flex-start;">
+        <a href="https://github.com/schooltwistchris/contact-purge/discussions"
+           class="btn btn-secondary">
+          💬 Start a discussion
+        </a>
+        <a href="https://github.com/schooltwistchris/contact-purge/issues/new/choose"
+           class="btn btn-secondary">
+          🐛 Report a bug
+        </a>
+        <a href="https://github.com/schooltwistchris/contact-purge"
+           class="btn btn-secondary">
+          ⭐ Star the repo
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-links">
+        <a href="https://github.com/schooltwistchris/contact-purge">GitHub</a>
+        <a href="https://github.com/schooltwistchris/contact-purge/releases">Releases</a>
+        <a href="https://gist.github.com/schooltwistchris/2e79e2cbfe9dbc84f162ffc6dbf1565e">Privacy</a>
+        <a href="https://github.com/schooltwistchris/contact-purge/blob/main/LICENSE">MIT License</a>
+      </div>
+      <div>Made by Chris Irving. No tracking, no accounts, no funny business.</div>
+    </div>
+  </footer>
+
+</body>
+</html>

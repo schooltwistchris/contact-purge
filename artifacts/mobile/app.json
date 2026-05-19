@@ -16,14 +16,15 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSContactsUsageDescription": "Clean Contacts needs access to your contacts to show you ones you haven't been in touch with."
+        "NSContactsUsageDescription": "Contact Purge needs access to your contacts to find and remove ones you haven't been in touch with."
       },
       "bundleIdentifier": "com.contactpurge.app"
     },
     "android": {
       "permissions": [
         "android.permission.READ_CONTACTS",
-        "android.permission.WRITE_CONTACTS"
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.READ_CALL_LOG"
       ],
       "package": "com.contactpurge.app"
     },
@@ -31,18 +32,12 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
-      "expo-web-browser",
       [
         "expo-contacts",
         {
-          "contactsPermission": "Allow Clean Contacts to access your contacts so you can find and remove ones you haven't spoken to in years."
+          "contactsPermission": "Allow Contact Purge to access your contacts so you can find and remove ones you haven't spoken to in years."
         }
       ]
     ],

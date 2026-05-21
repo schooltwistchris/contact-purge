@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   ActivityIndicator,
@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -17,7 +18,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ContactCard } from "@/components/ContactCard";
 import { FilterBar } from "@/components/FilterBar";
+import { SettingsModal } from "@/components/SettingsModal";
+import { TagPicker } from "@/components/TagPicker";
 import { useContacts } from "@/context/ContactsContext";
+import { useTags } from "@/context/TagsContext";
 import { useColors } from "@/hooks/useColors";
 
 function PermissionScreen() {
@@ -187,7 +191,30 @@ export default function MainScreen() {
     reload,
   } = useContacts();
 
+  const {
+    enabled: tagsEnabled,
+    tags,
+    assignments,
+    getTagsForContact,
+    countForTag,
+  } = useTags();
+
   const [deleting, setDeleting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pickerContactId, setPickerContactId] = useState<string | null>(null);
+  const [activeTagId, setActiveTagId] = useState<string | null>(null);
+
+  // Final list = quality-filtered (from context) then tag-filtered (local).
+  const displayedContacts = useMemo(() => {
+    if (!tagsEnabled || !activeTagId) return filteredContacts;
+    return filteredContacts.filter((c) =>
+      (assignments[c.id] ?? []).includes(activeTagId)
+    );
+  }, [filteredContacts, tagsEnabled, activeTagId, assignments]);
+
+  const pickerContact = pickerContactId
+    ? contacts.find((c) => c.id === pickerContactId)
+    : undefined;
 
   const handleDelete = useCallback(async () => {
     const count = selectedIds.size;
@@ -212,12 +239,10 @@ export default function MainScreen() {
     );
   }, [selectedIds.size, deleteSelected]);
 
-  const handleLongPressContact = useCallback(
-    (id: string) => {
-      const contact = contacts.find((c) => c.id === id);
-      if (!contact) return;
+  const confirmDeleteOne = useCallback(
+    (id: string, name: string) => {
       Alert.alert(
-        `Delete ${contact.name}?`,
+        `Delete ${name}?`,
         "This cannot be undone. Contacts synced from Google or Samsung accounts may not be fully removed here.",
         [
           { text: "Cancel", style: "cancel" },
@@ -236,7 +261,30 @@ export default function MainScreen() {
         ]
       );
     },
-    [contacts, deleteOne]
+    [deleteOne]
+  );
+
+  const handleLongPressContact = useCallback(
+    (id: string) => {
+      const contact = contacts.find((c) => c.id === id);
+      if (!contact) return;
+      // With tagging on, long-press opens an action menu. Otherwise it
+      // jumps straight to the delete confirmation (original behavior).
+      if (tagsEnabled) {
+        Alert.alert(contact.name, undefined, [
+          { text: "Tags…", onPress: () => setPickerContactId(id) },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => confirmDeleteOne(id, contact.name),
+          },
+          { text: "Cancel", style: "cancel" },
+        ]);
+      } else {
+        confirmDeleteOne(id, contact.name);
+      }
+    },
+    [contacts, tagsEnabled, confirmDeleteOne]
   );
 
   const isSelecting = selectedIds.size > 0;
@@ -323,19 +371,35 @@ export default function MainScreen() {
                 </Pressable>
               </>
             ) : (
-              <Pressable
-                onPress={selectAll}
-                style={[
-                  styles.headerBtn,
-                  { backgroundColor: colors.secondary },
-                ]}
-              >
-                <Text
-                  style={[styles.headerBtnText, { color: colors.foreground }]}
+              <>
+                <Pressable
+                  onPress={() => setSettingsOpen(true)}
+                  style={[
+                    styles.iconBtn,
+                    { backgroundColor: colors.secondary },
+                  ]}
+                  accessibilityLabel="Settings"
                 >
-                  Select All
-                </Text>
-              </Pressable>
+                  <Ionicons
+                    name="settings-outline"
+                    size={20}
+                    color={colors.foreground}
+                  />
+                </Pressable>
+                <Pressable
+                  onPress={selectAll}
+                  style={[
+                    styles.headerBtn,
+                    { backgroundColor: colors.secondary },
+                  ]}
+                >
+                  <Text
+                    style={[styles.headerBtnText, { color: colors.foreground }]}
+                  >
+                    Select All
+                  </Text>
+                </Pressable>
+              </>
             )}
           </View>
         </View>
@@ -352,9 +416,90 @@ export default function MainScreen() {
 
       <SmartSortBanner />
 
+      {/* Tag filter row — only when tagging is on and tags exist */}
+      {tagsEnabled && tags.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tagFilterRow}
+          style={[styles.tagFilterWrap, { borderBottomColor: colors.border }]}
+        >
+          <Pressable
+            onPress={() => setActiveTagId(null)}
+            style={[
+              styles.tagFilterChip,
+              {
+                backgroundColor:
+                  activeTagId === null ? colors.primary : colors.secondary,
+                borderColor:
+                  activeTagId === null ? colors.primary : colors.border,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.tagFilterChipText,
+                {
+                  color:
+                    activeTagId === null
+                      ? colors.primaryForeground
+                      : colors.mutedForeground,
+                },
+              ]}
+            >
+              All
+            </Text>
+          </Pressable>
+          {tags.map((tag) => {
+            const active = activeTagId === tag.id;
+            return (
+              <Pressable
+                key={tag.id}
+                onPress={() => setActiveTagId(active ? null : tag.id)}
+                style={[
+                  styles.tagFilterChip,
+                  {
+                    backgroundColor: active ? tag.color : colors.secondary,
+                    borderColor: active ? tag.color : colors.border,
+                  },
+                ]}
+              >
+                {tag.emoji ? (
+                  <Text style={styles.tagFilterEmoji}>{tag.emoji}</Text>
+                ) : (
+                  <View
+                    style={[styles.tagFilterDot, { backgroundColor: tag.color }]}
+                  />
+                )}
+                <Text
+                  style={[
+                    styles.tagFilterChipText,
+                    { color: active ? "#fff" : colors.foreground },
+                  ]}
+                >
+                  {tag.name}
+                </Text>
+                <Text
+                  style={[
+                    styles.tagFilterCount,
+                    {
+                      color: active
+                        ? "rgba(255,255,255,0.8)"
+                        : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  {countForTag(tag.id)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
+
       {/* Contact List */}
       <FlatList
-        data={filteredContacts}
+        data={displayedContacts}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <ContactCard
@@ -362,6 +507,7 @@ export default function MainScreen() {
             selected={selectedIds.has(item.id)}
             onPress={toggleSelect}
             onLongPress={handleLongPressContact}
+            tags={tagsEnabled ? getTagsForContact(item.id) : undefined}
           />
         )}
         ListEmptyComponent={
@@ -385,7 +531,18 @@ export default function MainScreen() {
           { paddingBottom: bottomPad + 16 },
         ]}
         showsVerticalScrollIndicator={false}
-        scrollEnabled={filteredContacts.length > 0}
+        scrollEnabled={displayedContacts.length > 0}
+      />
+
+      <SettingsModal
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+      <TagPicker
+        visible={pickerContactId !== null}
+        contactId={pickerContactId}
+        contactName={pickerContact?.name}
+        onClose={() => setPickerContactId(null)}
       />
     </View>
   );
@@ -425,6 +582,44 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: "row",
     gap: 8,
+    alignItems: "center",
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tagFilterWrap: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    maxHeight: 52,
+  },
+  tagFilterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  tagFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  tagFilterChipText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  tagFilterEmoji: { fontSize: 13 },
+  tagFilterDot: { width: 7, height: 7, borderRadius: 4 },
+  tagFilterCount: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
   },
   headerBtn: {
     paddingHorizontal: 16,

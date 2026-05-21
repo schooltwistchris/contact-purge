@@ -14,6 +14,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ContactsProvider } from "@/context/ContactsContext";
+import { TagsProvider } from "@/context/TagsContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -54,9 +55,11 @@ export default function RootLayout() {
       <ErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
-            <ContactsProvider>
-              <RootLayoutNav />
-            </ContactsProvider>
+            <TagsProvider>
+              <ContactsProvider>
+                <RootLayoutNav />
+              </ContactsProvider>
+            </TagsProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </ErrorBoundary>

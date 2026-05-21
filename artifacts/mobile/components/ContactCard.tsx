@@ -12,6 +12,8 @@ import {
 
 import { useColors } from "@/hooks/useColors";
 import type { ContactItem } from "@/context/ContactsContext";
+import type { Tag } from "@/context/TagsContext";
+import { TagChip } from "@/components/TagChip";
 
 const AVATAR_COLORS = [
   "#3B82F6", "#8B5CF6", "#EC4899", "#F59E0B",
@@ -43,9 +45,16 @@ interface Props {
   selected: boolean;
   onPress: (id: string) => void;
   onLongPress?: (id: string) => void;
+  tags?: Tag[];
 }
 
-export function ContactCard({ contact, selected, onPress, onLongPress }: Props) {
+export function ContactCard({
+  contact,
+  selected,
+  onPress,
+  onLongPress,
+  tags,
+}: Props) {
   const colors = useColors();
   const scale = useRef(new Animated.Value(1)).current;
   const avatarColor = getAvatarColor(contact.name);
@@ -130,6 +139,18 @@ export function ContactCard({ contact, selected, onPress, onLongPress }: Props) 
           >
             {subtitle}
           </Text>
+          {tags && tags.length > 0 && (
+            <View style={styles.tagRow}>
+              {tags.slice(0, 3).map((tag) => (
+                <TagChip key={tag.id} tag={tag} size="sm" />
+              ))}
+              {tags.length > 3 && (
+                <Text style={[styles.tagMore, { color: colors.mutedForeground }]}>
+                  +{tags.length - 3}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         <View style={styles.meta}>
@@ -210,6 +231,17 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
+  },
+  tagRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 4,
+  },
+  tagMore: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
   },
   meta: {
     alignItems: "flex-end",

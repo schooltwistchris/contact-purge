@@ -11,6 +11,8 @@ import React, {
 import { Alert, AppState, PermissionsAndroid, Platform } from "react-native";
 import CallLogs from "react-native-call-log";
 
+import { getSmsHistory } from "../modules/contact-sms";
+
 export type QualityFilter =
   | "all"
   | "no-info"
@@ -20,6 +22,16 @@ export type QualityFilter =
 export type CallLogStatus =
   | "unavailable" // iOS / web — not supported
   | "unknown" // not yet asked
+  | "requesting"
+  | "denied"
+  | "granted";
+
+// SMS layering sits on top of call-log smart sort. "ineligible" means the
+// call-log permission hasn't been granted yet, so SMS can't be offered.
+export type SmsLogStatus =
+  | "unavailable" // iOS / web — not supported
+  | "ineligible" // call log not granted yet (gate)
+  | "unknown" // eligible, not yet asked
   | "requesting"
   | "denied"
   | "granted";
@@ -43,6 +55,7 @@ interface ContactsState {
   qualityFilter: QualityFilter;
   permissionStatus: "unknown" | "granted" | "denied" | "requesting";
   callLogStatus: CallLogStatus;
+  smsLogStatus: SmsLogStatus;
   loading: boolean;
   counts: Record<QualityFilter, number>;
   setQualityFilter: (f: QualityFilter) => void;
@@ -53,6 +66,7 @@ interface ContactsState {
   deleteOne: (id: string) => Promise<void>;
   requestPermission: () => Promise<void>;
   enableCallLogSmartSort: () => Promise<void>;
+  enableSmsSmartSort: () => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -122,26 +136,63 @@ function phoneKey(raw: string | undefined | null): string {
 
 type UsageStats = { lastTime: number; count: number };
 
-async function loadUsageMap(): Promise<Map<string, UsageStats>> {
+// Add one interaction (call or text) to a usage map, keyed by phone.
+function tallyInteraction(
+  m: Map<string, UsageStats>,
+  rawNumber: string | undefined | null,
+  rawTs: string | number | undefined | null
+) {
+  const key = phoneKey(rawNumber);
+  if (!key) return;
+  const ts = typeof rawTs === "string" ? parseInt(rawTs, 10) : Number(rawTs);
+  if (!Number.isFinite(ts)) return;
+  const existing = m.get(key);
+  if (existing) {
+    existing.count++;
+    if (ts > existing.lastTime) existing.lastTime = ts;
+  } else {
+    m.set(key, { lastTime: ts, count: 1 });
+  }
+}
+
+async function loadCallLogUsageMap(): Promise<Map<string, UsageStats>> {
   const logs = await CallLogs.loadAll();
   const m = new Map<string, UsageStats>();
   for (const log of logs) {
-    const key = phoneKey(log.phoneNumber);
-    if (!key) continue;
-    const ts =
-      typeof log.timestamp === "string"
-        ? parseInt(log.timestamp, 10)
-        : Number(log.timestamp);
-    if (!Number.isFinite(ts)) continue;
-    const existing = m.get(key);
-    if (existing) {
-      existing.count++;
-      if (ts > existing.lastTime) existing.lastTime = ts;
-    } else {
-      m.set(key, { lastTime: ts, count: 1 });
-    }
+    tallyInteraction(m, log.phoneNumber, log.timestamp);
   }
   return m;
+}
+
+async function loadSmsUsageMap(): Promise<Map<string, UsageStats>> {
+  const messages = await getSmsHistory();
+  const m = new Map<string, UsageStats>();
+  for (const msg of messages) {
+    tallyInteraction(m, msg.address, msg.date);
+  }
+  return m;
+}
+
+// Combine call + SMS usage: take the most recent contact and the total
+// interaction count across both channels.
+function mergeUsage(
+  ...sources: Map<string, UsageStats>[]
+): Map<string, UsageStats> {
+  const merged = new Map<string, UsageStats>();
+  for (const source of sources) {
+    for (const [key, stats] of source) {
+      const existing = merged.get(key);
+      if (existing) {
+        existing.count += stats.count;
+        if (stats.lastTime > existing.lastTime) {
+          existing.lastTime = stats.lastTime;
+        }
+      } else {
+        merged.set(key, { ...stats });
+      }
+    }
+  }
+  return merged;
 }
 
 function attachUsageStats(
@@ -215,6 +266,9 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
   const [callLogStatus, setCallLogStatus] = useState<CallLogStatus>(
     Platform.OS === "android" ? "unknown" : "unavailable"
   );
+  const [smsLogStatus, setSmsLogStatus] = useState<SmsLogStatus>(
+    Platform.OS === "android" ? "ineligible" : "unavailable"
+  );
   const [loading, setLoading] = useState(false);
 
   const duplicateIds = useMemo(() => findDuplicateIds(contacts), [contacts]);
@@ -281,19 +335,29 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
           hasStats: false,
         }));
 
-      // Enrich with usage stats if user has granted READ_CALL_LOG. Checking
-      // the OS permission directly (not React state) keeps this self-contained.
+      // Enrich with usage stats from whichever sources the user has granted.
+      // Checking OS permissions directly (not React state) keeps this
+      // self-contained and always current.
       if (Platform.OS === "android") {
+        const maps: Map<string, UsageStats>[] = [];
         try {
           const callLogGranted = await PermissionsAndroid.check(
             PermissionsAndroid.PERMISSIONS.READ_CALL_LOG
           );
-          if (callLogGranted) {
-            const usage = await loadUsageMap();
-            mapped = attachUsageStats(mapped, usage);
-          }
+          if (callLogGranted) maps.push(await loadCallLogUsageMap());
         } catch (e) {
           console.warn("Failed to load call log usage stats:", e);
+        }
+        try {
+          const smsGranted = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.READ_SMS
+          );
+          if (smsGranted) maps.push(await loadSmsUsageMap());
+        } catch (e) {
+          console.warn("Failed to load SMS usage stats:", e);
+        }
+        if (maps.length > 0) {
+          mapped = attachUsageStats(mapped, mergeUsage(...maps));
         }
       }
 
@@ -334,6 +398,10 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
       );
       if (result === PermissionsAndroid.RESULTS.GRANTED) {
         setCallLogStatus("granted");
+        // Now eligible to offer SMS layering (if not already decided).
+        setSmsLogStatus((prev) =>
+          prev === "ineligible" ? "unknown" : prev
+        );
         // Re-load contacts now that we can enrich with usage stats.
         await loadContacts();
       } else {
@@ -342,6 +410,32 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn("Call log permission request failed:", e);
       setCallLogStatus("denied");
+    }
+  }, [loadContacts]);
+
+  const enableSmsSmartSort = useCallback(async () => {
+    if (Platform.OS !== "android") return;
+    setSmsLogStatus("requesting");
+    try {
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_SMS,
+        {
+          title: "Also use your text history?",
+          message:
+            "Contact Purge can sort more accurately by also counting texts. It reads only phone numbers and timestamps — never the content of your messages. Everything stays on your device.",
+          buttonPositive: "Allow",
+          buttonNegative: "Not now",
+        }
+      );
+      if (result === PermissionsAndroid.RESULTS.GRANTED) {
+        setSmsLogStatus("granted");
+        await loadContacts();
+      } else {
+        setSmsLogStatus("denied");
+      }
+    } catch (e) {
+      console.warn("SMS permission request failed:", e);
+      setSmsLogStatus("denied");
     }
   }, [loadContacts]);
 
@@ -383,8 +477,19 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
             // so the UI shows the right messaging.
             return prev === "denied" ? "denied" : "unknown";
           });
+
+          // SMS layering is gated behind call log. Mirror the live OS
+          // permission, but keep it "ineligible" until call log is granted.
+          const smsGranted = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.READ_SMS
+          );
+          setSmsLogStatus((prev) => {
+            if (smsGranted) return "granted";
+            if (!callLogGranted) return "ineligible";
+            return prev === "denied" ? "denied" : "unknown";
+          });
         } catch (e) {
-          console.warn("Failed to check call log permission:", e);
+          console.warn("Failed to check call log / SMS permission:", e);
         }
       }
     };
@@ -517,6 +622,7 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
         qualityFilter,
         permissionStatus,
         callLogStatus,
+        smsLogStatus,
         loading,
         counts,
         setQualityFilter,
@@ -527,6 +633,7 @@ export function ContactsProvider({ children }: { children: React.ReactNode }) {
         deleteOne,
         requestPermission,
         enableCallLogSmartSort,
+        enableSmsSmartSort,
         reload,
       }}
     >

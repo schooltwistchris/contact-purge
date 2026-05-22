@@ -9,9 +9,10 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
-ios/
-android/
+# Native — only the generated dirs at the project root, not local
+# module source (e.g. modules/contact-sms/android/).
+/ios/
+/android/
 *.orig.*
 *.jks
 *.p8

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Contact Purge",
     "slug": "contactpurge",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "contactpurge",
@@ -24,7 +24,8 @@
       "permissions": [
         "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS",
-        "android.permission.READ_CALL_LOG"
+        "android.permission.READ_CALL_LOG",
+        "android.permission.READ_SMS"
       ],
       "package": "com.contactpurge.app"
     },

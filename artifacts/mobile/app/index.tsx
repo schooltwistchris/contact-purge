@@ -171,6 +171,63 @@ function SmartSortBanner() {
   );
 }
 
+function SmsSortBanner() {
+  const colors = useColors();
+  const { smsLogStatus, enableSmsSmartSort } = useContacts();
+
+  // Only shown once call log is granted (status leaves "ineligible").
+  // Hidden when unavailable, ineligible, or already granted.
+  if (
+    smsLogStatus === "unavailable" ||
+    smsLogStatus === "ineligible" ||
+    smsLogStatus === "granted"
+  ) {
+    return null;
+  }
+  const isDenied = smsLogStatus === "denied";
+  const isRequesting = smsLogStatus === "requesting";
+  return (
+    <View
+      style={[
+        styles.banner,
+        { backgroundColor: colors.secondary, borderColor: colors.border },
+      ]}
+    >
+      <Ionicons name="chatbubbles-outline" size={18} color={colors.primary} />
+      <View style={styles.bannerText}>
+        <Text style={[styles.bannerTitle, { color: colors.foreground }]}>
+          {isDenied ? "Text history is off" : "Also use text history?"}
+        </Text>
+        <Text
+          style={[styles.bannerSubtitle, { color: colors.mutedForeground }]}
+          numberOfLines={2}
+        >
+          {isDenied
+            ? "Grant SMS access in Settings to factor texts into smart sort."
+            : "More accurate. Reads only numbers and timestamps — never message content."}
+        </Text>
+      </View>
+      <Pressable
+        onPress={
+          isDenied ? () => Linking.openSettings() : enableSmsSmartSort
+        }
+        disabled={isRequesting}
+        style={[styles.bannerBtn, { backgroundColor: colors.primary }]}
+      >
+        {isRequesting ? (
+          <ActivityIndicator size="small" color={colors.primaryForeground} />
+        ) : (
+          <Text
+            style={[styles.bannerBtnText, { color: colors.primaryForeground }]}
+          >
+            {isDenied ? "Settings" : "Enable"}
+          </Text>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
 export default function MainScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -415,6 +472,7 @@ export default function MainScreen() {
       />
 
       <SmartSortBanner />
+      <SmsSortBanner />
 
       {/* Tag filter row — only when tagging is on and tags exist */}
       {tagsEnabled && tags.length > 0 && (
